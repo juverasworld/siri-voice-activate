@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Visualization (400-800 Hz)</title>
+  <style>
+    body {
+      background-color: rgb(25, 25, 25);
+    }
+    #siri-container-1, #siri-container-2, #siri-container-3, #siri-container-4 {
+      position: absolute;
+      top: 40vh;
+      left: 35%;
+    }
+  </style>
+  <script src="https://unpkg.com/siriwave/dist/siriwave.umd.min.js"></script>
+  <script>
+    async function startMicrophone() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 2048;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function getFrequencyData() {
+        analyser.getByteFrequencyData(dataArray);
+        return dataArray;
+      }
+
+      return { analyser, getFrequencyData };
+    }
+
+    function mapToRange(value, inputMin, inputMax, outputMin, outputMax) {
+      return ((value - inputMin) * (outputMax - outputMin)) / (inputMax - inputMin) + outputMin;
+    }
+
+    async function init() {
+      const { getFrequencyData } = await startMicrophone();
+
+      const siriWaves = [
+        new SiriWave({
+          container: document.getElementById("siri-container-1"),
+          width: 300,
+          height: 150,
+          style: "ios9",
+          curveDefinition: [
+            { color: "255,255,255", supportLine: true },
+            { color: "192, 161, 139" },
+          ]
+        }),
+        new SiriWave({
+          container: document.getElementById("siri-container-2"),
+          width: 300,
+          height: 150,
+          style: "ios9",
+          curveDefinition: [
+            { color: "255,255,255", supportLine: true },
+            { color: "217, 198, 182" },
+          ]
+        }),
+        new SiriWave({
+          container: document.getElementById("siri-container-3"),
+          width: 300,
+          height: 150,
+          style: "ios9",
+          curveDefinition: [
+            { color: "255,255,255", supportLine: true },
+            { color: "225, 210, 195" },
+          ]
+        }),
+        new SiriWave({
+          container: document.getElementById("siri-container-4"),
+          width: 300,
+          height: 150,
+          style: "ios9",
+          curveDefinition: [
+            { color: "255,255,255", supportLine: true },
+            { color: "237, 226, 215" },
+          ]
+        })
+      ];
+
+      siriWaves.forEach(wave => wave.start());
+
+      function updateWaveforms() {
+        const frequencyData = getFrequencyData();
+        
+        // Focus on speech frequencies (400Hz to 800Hz)
+        const speechStart = Math.floor(400 / (44100 / 2048));
+        const speechEnd = Math.ceil(800 / (44100 / 2048));
+        
+        const speechData = frequencyData.slice(speechStart, speechEnd);
+        const avgEnergy = speechData.reduce((a, b) => a + b, 0) / speechData.length;
+
+        // Apply a noise gate to filter out background noise
+        const noiseGateThreshold = 50; // Threshold value for background noise
+        const effectiveEnergy = avgEnergy > noiseGateThreshold ? avgEnergy : 0;
+        
+        // Normalize and apply thresholds
+        const normalizedEnergy = Math.min(Math.max(effectiveEnergy / 128, 0), 1);
+        
+        // Apply non-linear mapping for amplitude
+        let amplitude;
+        let speed;
+        if (normalizedEnergy < 0.3) {
+          amplitude = 0; // No animation for very low energy
+          speed = 0;
+          console.log("too low")
+        } else if (normalizedEnergy < 0.4) {
+          amplitude = mapToRange(normalizedEnergy, 0.2, 0.4, 1.5, 1.7);
+          speed = 0.14;
+          console.log("normal 0.4")
+        } else {
+          amplitude = mapToRange(normalizedEnergy, 0.4, 1, 1.8, 2.2);
+          speed = mapToRange(normalizedEnergy, 0.4, 1, 0.15, 0.16);
+          console.log("else clause", normalizedEnergy)
+        }
+        
+        // Update all waves with slightly different parameters
+        siriWaves.forEach((wave, index) => {
+          const waveAmplitude = amplitude; // Same amplitude for all waves
+          const waveSpeed = speed * (1 - index * 0.025);
+          wave.setAmplitude(waveAmplitude);
+          wave.setSpeed(waveSpeed);
+        });
+
+        requestAnimationFrame(updateWaveforms);
+      }
+
+      updateWaveforms();
+    }
+
+    window.onload = init;
+  </script>
+</head>
+<body>
+  <div id="siri-container-1"></div>
+  <div id="siri-container-2"></div>
+  <div id="siri-container-3"></div>
+  <div id="siri-container-4"></div>
+</body>
+</html>
